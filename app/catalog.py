@@ -235,9 +235,3 @@ def replace_file_source(
     row.telegram_file_id = None
     session.commit()
     return row, None
-
-
-def stats(session: Session) -> tuple[int, int]:
-    count = session.query(func.count(File.id)).scalar() or 0
-    total_size = session.query(func.coalesce(func.sum(File.size_bytes), 0)).scalar() or 0
-    return count, total_size
