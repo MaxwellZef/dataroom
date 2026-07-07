@@ -8,23 +8,20 @@ whenever you want, and pull any file back into a chat on demand.
 
 ## How it works
 
-- `/start` or `/menu` shows a button menu (**Add Drive link**, **Browse /
-  Search**, **Stats**) so you rarely need to type a command by hand.
-  Tapping "Add Drive link" prompts you to paste a URL, runs the exact
-  same preview as `/addlink`, and you confirm from there.
-- You send `/addlink <drive-url>` for a file or a folder. The app reads it
-  via the Google Drive API — without saving anything yet — and shows you
-  every file it found so you can check it's the right folder before
-  committing to it.
-- You then send `/confirm` to actually file those documents into the
-  catalog under a company. For a folder link, the bot suggests the
-  folder's own name as the company (e.g. point it at a folder named
-  "Acme Corp" and it'll offer to file everything under "Acme Corp");
-  `/confirm <number>` files it under an existing company instead, and
-  `/confirm new <name>` picks a different new name. For a single-file
-  link there's no folder to suggest a name from, so you pick a company
-  explicitly with `/confirm <number>` or `/confirm new <name>`.
-  `/cancel` discards the preview instead.
+- `/start` or `/menu` shows a persistent bottom keyboard with three
+  buttons — **📥 Get**, **➕ Add link**, **🔎 Find** — plus a **« Back**
+  that's always there to bail out of whatever you're doing. Tapping a
+  button prompts you for whatever it needs (a Drive link, a catalog
+  id/filename, or search text) and walks the rest of the flow through
+  buttons where possible.
+- Tapping **➕ Add link** (or typing `/addlink <drive-url>`) previews a
+  file or folder — without saving anything yet — and shows you every
+  file it found so you can check it's the right one before committing.
+  Company assignment is then done with buttons: "Use the suggested
+  name" (folders only, taken from the folder's own name), "Existing
+  company" (pick from a list), or "New company name" (type one). Typing
+  `/confirm`, `/confirm <number>`, or `/confirm new <name>` still works
+  too. `/cancel` discards the preview instead.
 - `/companies` lists every company you've filed things under and how
   many files each has.
 - `/search` opens a tappable menu — browse by company, by filename, or
@@ -137,13 +134,12 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 | `/cancel` | Discard the last preview instead of filing it |
 | `/companies` | List companies and how many files are under each |
 | `/search` | Open the tappable browse/search menu (company, filename, recent) |
-| `/menu` | Show the main button menu (Add link / Browse-Search / Stats) again |
+| `/menu` | Show the bottom button keyboard (Get / Add link / Find / Back) again |
 | `/list [page]` | Browse the catalog, 20 at a time |
 | `/find <text>` | Search filenames |
 | `/get <id or name>` | Fetch a file into the chat |
 | `/delete <id>` | Remove a file from the catalog (Drive itself is untouched) |
 | `/replace <id> <new drive url>` | Point a catalog entry at a different Drive file |
-| `/stats` | File count and total size |
 
 ## Limits worth knowing
 
