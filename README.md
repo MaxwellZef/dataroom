@@ -8,6 +8,10 @@ whenever you want, and pull any file back into a chat on demand.
 
 ## How it works
 
+- `/start` or `/menu` shows a button menu (**Add Drive link**, **Browse /
+  Search**, **Stats**) so you rarely need to type a command by hand.
+  Tapping "Add Drive link" prompts you to paste a URL, runs the exact
+  same preview as `/addlink`, and you confirm from there.
 - You send `/addlink <drive-url>` for a file or a folder. The app reads it
   via the Google Drive API — without saving anything yet — and shows you
   every file it found so you can check it's the right folder before
@@ -133,6 +137,7 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 | `/cancel` | Discard the last preview instead of filing it |
 | `/companies` | List companies and how many files are under each |
 | `/search` | Open the tappable browse/search menu (company, filename, recent) |
+| `/menu` | Show the main button menu (Add link / Browse-Search / Stats) again |
 | `/list [page]` | Browse the catalog, 20 at a time |
 | `/find <text>` | Search filenames |
 | `/get <id or name>` | Fetch a file into the chat |
