@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: dataroom-bot
+    env: docker
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: ALLOWED_TELEGRAM_USER_IDS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PORT
+        value: 8080

@@ -1,0 +1,9 @@
+TELEGRAM_BOT_TOKEN=8927077831:AAE27RVq4Zcl_Ydm0kwJwCfRssZ9kH3xzWQ
+GOOGLE_API_KEY=AIzaSyBeTxfVaNiXueGIXNL_chm36JEZGd8cHSY
+
+# Leave this empty for the first deploy. Message the bot /start on Telegram,
+# it will reply with your numeric user ID, then paste it here and redeploy.
+ALLOWED_TELEGRAM_USER_IDS=
+
+DATABASE_URL=sqlite:///dataroom.db
+PORT=8080
