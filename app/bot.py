@@ -58,9 +58,9 @@ def _truncate(text: str, limit: int = 45) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-async def _send_chunked(update: Update, text: str) -> None:
+async def _send_chunked(message, text: str) -> None:
     for start in range(0, len(text), TELEGRAM_MESSAGE_LIMIT):
-        await update.message.reply_text(text[start : start + TELEGRAM_MESSAGE_LIMIT])
+        await message.reply_text(text[start : start + TELEGRAM_MESSAGE_LIMIT])
 
 
 def owner_only(handler):
@@ -128,6 +128,17 @@ async def _fetch_search(query_text: str) -> list[File]:
         session = SessionLocal()
         try:
             return search_files(session, query_text)
+        finally:
+            session.close()
+
+    return await asyncio.to_thread(_run)
+
+
+async def _fetch_stats() -> tuple[int, int]:
+    def _run():
+        session = SessionLocal()
+        try:
+            return stats(session)
         finally:
             session.close()
 
@@ -235,6 +246,19 @@ async def _deliver_file(message, file_id: int) -> None:
         session.close()
 
 
+# --- main menu (buttons for the top-level commands) ---
+
+
+def _main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("➕ Add Drive link", callback_data="m:add")],
+            [InlineKeyboardButton("🔍 Browse / Search", callback_data="sm")],
+            [InlineKeyboardButton("📊 Stats", callback_data="m:stats")],
+        ]
+    )
+
+
 # --- inline keyboards for the /search menu ---
 
 
@@ -248,6 +272,7 @@ def _root_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("🏢 By company", callback_data="sc:1")],
             [InlineKeyboardButton("🔤 By filename", callback_data="sn")],
             [InlineKeyboardButton("🕒 Recent", callback_data="sr:1")],
+            [InlineKeyboardButton("« Main menu", callback_data="mm")],
         ]
     )
 
@@ -337,23 +362,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/cancel - discard the last preview\n"
         "/companies - list companies and their file counts\n"
         "/search - browse/search with buttons (company, filename, recent)\n"
+        "/menu - show the button menu below again\n"
         "/list [page] - list catalogued files\n"
         "/find <text> - search by filename\n"
         "/get <id or name> - fetch a file\n"
         "/delete <id> - remove a file from the catalog (Drive is untouched)\n"
         "/replace <id> <new drive url> - point a catalog entry at a new Drive file\n"
-        "/stats - catalog totals"
+        "/stats - catalog totals",
+        reply_markup=_main_menu_keyboard(),
     )
 
 
-@owner_only
-async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Usage: /addlink <google drive url>")
-        return
+async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
+    """Preview a Drive link and reply with what was found. Shared by /addlink and the menu button."""
 
-    url = context.args[0]
-    await update.message.reply_text("Reading that link from Drive...")
+    await message.reply_text("Reading that link from Drive...")
 
     def _run():
         preview = preview_link(url, DriveClient())
@@ -366,18 +389,18 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         preview, companies = await asyncio.to_thread(_run)
     except DriveLinkError as exc:
-        await update.message.reply_text(str(exc))
+        await message.reply_text(str(exc))
         return
     except Exception:
         logger.exception("Failed to preview link %s", url)
-        await update.message.reply_text(
+        await message.reply_text(
             "Couldn't read that link. Make sure it's shared as "
             "\"Anyone with the link\" and try again."
         )
         return
 
     if not preview.files:
-        await update.message.reply_text("That link resolved but no files were found in it.")
+        await message.reply_text("That link resolved but no files were found in it.")
         return
 
     context.user_data["pending_import"] = preview
@@ -406,7 +429,16 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("")
     lines.append("/cancel - discard this")
 
-    await _send_chunked(update, "\n".join(lines))
+    await _send_chunked(message, "\n".join(lines))
+
+
+@owner_only
+async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: /addlink <google drive url>")
+        return
+
+    await _preview_and_reply(update.message, context, context.args[0])
 
 
 @owner_only
@@ -472,7 +504,7 @@ async def companies_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lines = [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
-    await _send_chunked(update, "\n".join(lines))
+    await _send_chunked(update.message, "\n".join(lines))
 
 
 def _format_file_line(row: File) -> str:
@@ -502,7 +534,7 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines = [_format_file_line(row) for row in rows]
     header = f"Page {page} - {total} file(s) total\n"
-    await _send_chunked(update, header + "\n".join(lines))
+    await _send_chunked(update.message, header + "\n".join(lines))
 
 
 @owner_only
@@ -517,7 +549,7 @@ async def find_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lines = [_format_file_line(row) for row in rows]
-    await _send_chunked(update, "\n".join(lines))
+    await _send_chunked(update.message, "\n".join(lines))
 
 
 @owner_only
@@ -577,20 +609,18 @@ async def replace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    def _run():
-        session = SessionLocal()
-        try:
-            return stats(session)
-        finally:
-            session.close()
-
-    count, total_size = await asyncio.to_thread(_run)
+    count, total_size = await _fetch_stats()
     await update.message.reply_text(f"{count} file(s) catalogued, {_human_size(total_size)} total.")
 
 
 @owner_only
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Search the dataroom:", reply_markup=_root_menu_keyboard())
+
+
+@owner_only
+async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Main menu:", reply_markup=_main_menu_keyboard())
 
 
 # --- inline menu callback + free-text follow-ups (search-by-name, replace link) ---
@@ -601,6 +631,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+
+    if data == "mm":
+        await query.edit_message_text("Main menu:", reply_markup=_main_menu_keyboard())
+        return
+
+    if data == "m:add":
+        context.user_data["awaiting_addlink_url"] = True
+        await query.edit_message_text("Send the Google Drive link (file or folder) you want to add.")
+        return
+
+    if data == "m:stats":
+        count, total_size = await _fetch_stats()
+        await query.edit_message_text(
+            f"{count} file(s) catalogued, {_human_size(total_size)} total.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Main menu", callback_data="mm")]]),
+        )
+        return
 
     if data == "sm":
         await query.edit_message_text("Search the dataroom:", reply_markup=_root_menu_keyboard())
@@ -704,6 +751,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f'Replaced. "{row.name}" now points at the new Drive file.')
         return
 
+    if context.user_data.pop("awaiting_addlink_url", None):
+        await _preview_and_reply(update.message, context, text)
+        return
+
     if context.user_data.pop("awaiting_search_text", None):
         rows = await _fetch_search(text)
         if not rows:
@@ -724,6 +775,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("cancel", cancel_cmd))
     application.add_handler(CommandHandler("companies", companies_cmd))
     application.add_handler(CommandHandler("search", search_cmd))
+    application.add_handler(CommandHandler("menu", menu_cmd))
     application.add_handler(CommandHandler("list", list_cmd))
     application.add_handler(CommandHandler("find", find_cmd))
     application.add_handler(CommandHandler("get", get_cmd))
