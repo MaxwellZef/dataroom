@@ -9,7 +9,7 @@ whenever you want, and pull any file back into a chat on demand.
 ## How it works
 
 - `/start` or `/menu` shows an in-chat button menu with three options —
-  **📥 Get**, **➕ Add link**, **🔎 Find** — plus a **« Back** that's
+  **📥 Get**, **➕ Add link**, **🔎 Search** — plus a **« Back** that's
   always there to bail out of whatever you're doing. Tapping a button
   prompts you for whatever it needs (a Drive link, a catalog
   id/filename, or search text) and walks the rest of the flow through
@@ -21,19 +21,17 @@ whenever you want, and pull any file back into a chat on demand.
 - Tapping **➕ Add link** (or typing `/addlink <drive-url>`) previews a
   file or folder — without saving anything yet — and shows you every
   file it found so you can check it's the right one before committing.
-  Company assignment is then done with buttons: "Use the suggested
-  name" (folders only, taken from the folder's own name), "Existing
-  company" (pick from a list), or "New company name" (type one). Typing
-  `/confirm`, `/confirm <number>`, or `/confirm new <name>` still works
-  too. `/cancel` discards the preview instead.
+  Company assignment is then done entirely with buttons: "Use the
+  suggested name" (folders only, taken from the folder's own name),
+  "Existing company" (pick from a list), or "New company name" (type
+  one). `/cancel` discards the preview instead.
 - `/companies` lists every company you've filed things under and how
   many files each has.
-- `/search` opens a tappable menu — browse by company, by filename, or
-  recent — instead of typing commands. Tapping a file shows its details
-  with **Get**, **Replace**, and **Delete** buttons right there.
-- `/list`, `/find <text>` are the command-line equivalent: browse/search
-  the whole catalog as text (each entry shows which company it's filed
-  under, if any).
+- **🔎 Search** (or `/search`) lands straight on your most recently
+  added files, paginated, with buttons to switch to browsing by company
+  or searching by filename. Tapping any file shows its details with
+  **Get**, **Replace**, and **Delete** buttons right there. `/find
+  <text>` is the direct command-line shortcut for a filename search.
 - `/get <id-or-name>` downloads the file from Drive right then and sends it
   to you in the chat. The first time a file is sent, Telegram hands back a
   `file_id`; the bot caches that so the next `/get` is instant instead of
@@ -131,16 +129,12 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 
 | Command | What it does |
 |---|---|
-| `/addlink <drive url>` | Preview a Drive file or folder link — lists what's in it, nothing is saved yet |
-| `/confirm` | File the last preview under its suggested company (folders only) |
-| `/confirm <number>` | File the last preview under an existing company from the list |
-| `/confirm new <name>` | File the last preview under a brand-new company name |
-| `/cancel` | Discard the last preview instead of filing it |
+| `/addlink <drive url>` | Preview a Drive file or folder link — lists what's in it, nothing is saved yet. Company assignment happens via buttons on the preview. |
+| `/cancel` | Discard the last preview |
 | `/companies` | List companies and how many files are under each |
-| `/search` | Open the tappable browse/search menu (company, filename, recent) |
-| `/menu` | Show the button menu (Get / Add link / Find / Back) again |
-| `/list [page]` | Browse the catalog, 20 at a time |
-| `/find <text>` | Search filenames |
+| `/search` | Recent files, paginated, with buttons to switch to company/filename search |
+| `/menu` | Show the button menu (Get / Add link / Search / Back) again |
+| `/find <text>` | Search filenames directly from the command line |
 | `/get <id or name>` | Fetch a file into the chat |
 | `/delete <id>` | Remove a file from the catalog (Drive itself is untouched) |
 | `/replace <id> <new drive url>` | Point a catalog entry at a different Drive file |
