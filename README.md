@@ -8,12 +8,16 @@ whenever you want, and pull any file back into a chat on demand.
 
 ## How it works
 
-- `/start` or `/menu` shows a persistent bottom keyboard with three
-  buttons — **📥 Get**, **➕ Add link**, **🔎 Find** — plus a **« Back**
-  that's always there to bail out of whatever you're doing. Tapping a
-  button prompts you for whatever it needs (a Drive link, a catalog
+- `/start` or `/menu` shows an in-chat button menu with three options —
+  **📥 Get**, **➕ Add link**, **🔎 Find** — plus a **« Back** that's
+  always there to bail out of whatever you're doing. Tapping a button
+  prompts you for whatever it needs (a Drive link, a catalog
   id/filename, or search text) and walks the rest of the flow through
   buttons where possible.
+- The ☰ menu button next to the message box (Telegram's native command
+  menu) lists every slash command with a one-line description — tap it
+  any time for the full command reference without scrolling back to
+  `/start`.
 - Tapping **➕ Add link** (or typing `/addlink <drive-url>`) previews a
   file or folder — without saving anything yet — and shows you every
   file it found so you can check it's the right one before committing.
@@ -134,7 +138,7 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 | `/cancel` | Discard the last preview instead of filing it |
 | `/companies` | List companies and how many files are under each |
 | `/search` | Open the tappable browse/search menu (company, filename, recent) |
-| `/menu` | Show the bottom button keyboard (Get / Add link / Find / Back) again |
+| `/menu` | Show the button menu (Get / Add link / Find / Back) again |
 | `/list [page]` | Browse the catalog, 20 at a time |
 | `/find <text>` | Search filenames |
 | `/get <id or name>` | Fetch a file into the chat |
