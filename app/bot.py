@@ -318,7 +318,6 @@ def _main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(ADD_LABEL, callback_data="mn:add"),
                 InlineKeyboardButton(FIND_LABEL, callback_data="mn:find"),
             ],
-            [InlineKeyboardButton(BACK_LABEL, callback_data="mn")],
         ]
     )
 
@@ -958,6 +957,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 BOT_COMMANDS = [
+    BotCommand("start", "Show the welcome menu"),
     BotCommand("addlink", "Add a Google Drive link"),
     BotCommand("confirm", "Confirm & save the file"),
     BotCommand("cancel", "Cancel current preview"),
