@@ -269,7 +269,7 @@ async def _deliver_file(message, file_id: int) -> None:
 
         if row.telegram_file_id:
             await message.reply_document(document=row.telegram_file_id, filename=row.name)
-            await message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
+            await _show_main_menu(message)
             return
 
         if row.size_bytes and row.size_bytes > TELEGRAM_MAX_FILE_BYTES:
@@ -302,7 +302,7 @@ async def _deliver_file(message, file_id: int) -> None:
         sent = await message.reply_document(document=InputFile(io.BytesIO(content), filename=filename))
         if sent.document:
             await asyncio.to_thread(record_telegram_file_id, session, row, sent.document.file_id)
-        await message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
+        await _show_main_menu(message)
     finally:
         session.close()
 
@@ -324,6 +324,12 @@ def _main_menu_keyboard() -> InlineKeyboardMarkup:
 
 def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton(BACK_LABEL, callback_data="mn")]])
+
+
+async def _show_main_menu(message) -> None:
+    """Pull up the /start screen — sent as a follow-up once an action has finished."""
+
+    await message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
 
 
 # --- inline keyboards for the /search menu ---
@@ -479,7 +485,7 @@ def _pick_company_keyboard(companies: list[tuple], page: int) -> InlineKeyboardM
 
 @owner_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
+    await _show_main_menu(update.message)
 
 
 async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
@@ -544,10 +550,8 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ):
         context.user_data.pop(key, None)
 
-    await update.message.reply_text(
-        "Discarded." if had_pending else "Nothing pending.",
-        reply_markup=_main_menu_keyboard(),
-    )
+    await update.message.reply_text("Discarded." if had_pending else "Nothing pending.")
+    await _show_main_menu(update.message)
 
 
 @owner_only
@@ -621,6 +625,7 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"No file with id {context.args[0]}.")
         return
     await update.message.reply_text(f'Deleted "{row.name}" from the catalog (the Drive file is untouched).')
+    await _show_main_menu(update.message)
 
 
 @owner_only
@@ -634,6 +639,7 @@ async def replace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(error)
         return
     await update.message.reply_text(f'Replaced. "{row.name}" now points at the new Drive file.')
+    await _show_main_menu(update.message)
 
 
 @owner_only
@@ -644,7 +650,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
+    await _show_main_menu(update.message)
 
 
 # --- inline menu callback + free-text follow-ups ---
@@ -702,6 +708,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.'
         )
+        await _show_main_menu(query.message)
         return
 
     if data == "ic:new":
@@ -750,12 +757,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.'
         )
+        await _show_main_menu(query.message)
         return
 
     if data == "ic:cancel":
         context.user_data.pop("pending_import", None)
         context.user_data.pop("awaiting_new_company_name", None)
         await query.edit_message_text("Discarded.")
+        await _show_main_menu(query.message)
         return
 
     if data == "sm" or data.startswith("sr:"):
@@ -821,9 +830,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = int(data.split(":")[1])
         row = await _do_delete(file_id)
         if row is None:
-            await query.edit_message_text("Already gone.", reply_markup=_back_to_search_keyboard())
+            await query.edit_message_text("Already gone.")
         else:
-            await query.edit_message_text(f'Deleted "{row.name}" from the catalog.', reply_markup=_back_to_search_keyboard())
+            await query.edit_message_text(f'Deleted "{row.name}" from the catalog.')
+        await _show_main_menu(query.message)
         return
 
     if data.startswith("sxn:"):
@@ -852,9 +862,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if error:
             await update.message.reply_text(error)
             return
-        await update.message.reply_text(
-            f'Replaced. "{row.name}" now points at the new Drive file.', reply_markup=_main_menu_keyboard()
-        )
+        await update.message.reply_text(f'Replaced. "{row.name}" now points at the new Drive file.')
+        await _show_main_menu(update.message)
         return
 
     if context.user_data.pop("awaiting_addlink_url", None):
@@ -888,9 +897,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_import", None)
         company_name, added, updated = payload
         await update.message.reply_text(
-            f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.',
-            reply_markup=_main_menu_keyboard(),
+            f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.'
         )
+        await _show_main_menu(update.message)
         return
 
     if context.user_data.pop("awaiting_search_text", None):
