@@ -271,6 +271,7 @@ async def _deliver_file(message, file_id: int) -> None:
 
         if row.telegram_file_id:
             await message.reply_document(document=row.telegram_file_id, filename=row.name)
+            await message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
             return
 
         if row.size_bytes and row.size_bytes > TELEGRAM_MAX_FILE_BYTES:
@@ -303,6 +304,7 @@ async def _deliver_file(message, file_id: int) -> None:
         sent = await message.reply_document(document=InputFile(io.BytesIO(content), filename=filename))
         if sent.document:
             await asyncio.to_thread(record_telegram_file_id, session, row, sent.document.file_id)
+        await message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
     finally:
         session.close()
 
@@ -931,7 +933,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"No file matching {text!r}.", reply_markup=_main_menu_keyboard())
             return
         await _deliver_file(update.message, row.id)
-        await update.message.reply_text("Menu:", reply_markup=_main_menu_keyboard())
         return
 
     if context.user_data.pop("awaiting_new_company_name", None):
@@ -960,7 +961,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [[_file_button(row)] for row in rows] + [[InlineKeyboardButton("« Search menu", callback_data="sm")]]
         )
         await update.message.reply_text(f"Found {len(rows)} match(es):", reply_markup=keyboard)
-        await update.message.reply_text("Menu:", reply_markup=_main_menu_keyboard())
         return
 
 
