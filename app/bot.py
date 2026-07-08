@@ -511,7 +511,10 @@ async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: s
 @owner_only
 async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /addlink <google drive url>")
+        context.user_data["awaiting_addlink_url"] = True
+        await update.message.reply_text(
+            "Send the Google Drive link (file or folder) you want to add.", reply_markup=_back_keyboard()
+        )
         return
 
     await _preview_and_reply(update.message, context, context.args[0])
@@ -620,7 +623,10 @@ async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @owner_only
 async def find_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /find <text to search for>")
+        context.user_data["awaiting_search_text"] = True
+        await update.message.reply_text(
+            "Send the text you want to search filenames for.", reply_markup=_back_keyboard()
+        )
         return
 
     rows = await _fetch_search(" ".join(context.args))
@@ -635,7 +641,10 @@ async def find_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @owner_only
 async def get_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /get <catalog id or filename>")
+        context.user_data["awaiting_get_query"] = True
+        await update.message.reply_text(
+            "Send the catalog id or filename of the file you want.", reply_markup=_back_keyboard()
+        )
         return
 
     identifier = " ".join(context.args)
