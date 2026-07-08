@@ -52,6 +52,23 @@ ADD_LABEL = "➕ Add link"
 FIND_LABEL = "🔎 Find"
 BACK_LABEL = "« Back"
 
+MAIN_MENU_TEXT = (
+    "👋 Welcome to Dataroom Bot!\n\n"
+    "Manage and organize your Google Drive files directly from Telegram.\n\n"
+    "🚀 Quick Start\n\n"
+    "1️⃣ Add a Google Drive link — /addlink\n"
+    "2️⃣ Confirm & save the file — /confirm\n"
+    "3️⃣ Browse or search your files — /search\n\n"
+    "📋 Other Commands\n\n"
+    "📁 View companies — /companies\n"
+    "📄 List all files — /list\n"
+    "🔎 Find a file — /find\n"
+    "📥 Get a file — /get\n"
+    "♻️ Replace a file — /replace\n"
+    "🗑️ Remove from catalog — /delete (Drive file stays untouched)\n"
+    "❌ Cancel current preview — /cancel"
+)
+
 
 def _human_size(num_bytes: int | None) -> str:
     if not num_bytes:
@@ -440,23 +457,7 @@ def _pick_company_keyboard(companies: list[tuple], page: int) -> InlineKeyboardM
 
 @owner_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Welcome to Dataroom Bot!\n\n"
-        "Manage and organize your Google Drive files directly from Telegram.\n\n"
-        "🚀 Quick Start\n\n"
-        "1️⃣ Add a Google Drive link — /addlink\n"
-        "2️⃣ Confirm & save the file — /confirm\n"
-        "3️⃣ Browse or search your files — /search\n\n"
-        "📋 Other Commands\n\n"
-        "📁 View companies — /companies\n"
-        "📄 List all files — /list\n"
-        "🔎 Find a file — /find\n"
-        "📥 Get a file — /get\n"
-        "♻️ Replace a file — /replace\n"
-        "🗑️ Remove from catalog — /delete (Drive file stays untouched)\n"
-        "❌ Cancel current preview — /cancel",
-        reply_markup=_main_menu_keyboard(),
-    )
+    await update.message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
 
 
 async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
@@ -686,7 +687,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Main menu:", reply_markup=_main_menu_keyboard())
+    await update.message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
 
 
 # --- inline menu callback + free-text follow-ups ---
@@ -708,7 +709,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "awaiting_new_company_name",
         ):
             context.user_data.pop(key, None)
-        await query.edit_message_text("Main menu:", reply_markup=_main_menu_keyboard())
+        await query.edit_message_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
         return
 
     if data == "mn:get":
