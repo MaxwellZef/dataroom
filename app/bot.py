@@ -49,7 +49,7 @@ MENU_PAGE_SIZE = 8
 
 GET_LABEL = "📥 Get"
 ADD_LABEL = "➕ Add link"
-FIND_LABEL = "🔎 Find"
+SEARCH_LABEL = "🔎 Search"
 BACK_LABEL = "« Back"
 
 MAIN_MENU_TEXT = (
@@ -57,11 +57,9 @@ MAIN_MENU_TEXT = (
     "Manage and organize your Google Drive files directly from Telegram.\n\n"
     "🚀 Quick Start\n\n"
     "1️⃣ Add a Google Drive link — /addlink\n"
-    "2️⃣ Confirm & save the file — /confirm\n"
-    "3️⃣ Browse or search your files — /search\n\n"
+    "2️⃣ Browse or search your files — /search\n\n"
     "📋 Other Commands\n\n"
     "📁 View companies — /companies\n"
-    "📄 List all files — /list\n"
     "🔎 Find a file — /find\n"
     "📥 Get a file — /get\n"
     "♻️ Replace a file — /replace\n"
@@ -318,7 +316,7 @@ def _main_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(GET_LABEL, callback_data="mn:get"),
                 InlineKeyboardButton(ADD_LABEL, callback_data="mn:add"),
-                InlineKeyboardButton(FIND_LABEL, callback_data="mn:find"),
+                InlineKeyboardButton(SEARCH_LABEL, callback_data="mn:search"),
             ],
         ]
     )
@@ -335,14 +333,37 @@ def _file_button(row: File) -> InlineKeyboardButton:
     return InlineKeyboardButton(_truncate(row.name), callback_data=f"sd:{row.id}")
 
 
-def _root_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def _back_to_search_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("« Search", callback_data="sm")]])
+
+
+def _search_home_keyboard(files: list[File], page: int, total: int) -> InlineKeyboardMarkup:
+    total_pages = max(1, (total + MENU_PAGE_SIZE - 1) // MENU_PAGE_SIZE)
+    rows = [[_file_button(row)] for row in files]
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton("« Prev", callback_data=f"sr:{page - 1}"))
+    if page < total_pages:
+        nav.append(InlineKeyboardButton("Next »", callback_data=f"sr:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append(
         [
-            [InlineKeyboardButton("🏢 By company", callback_data="sc:1")],
-            [InlineKeyboardButton("🔤 By filename", callback_data="sn")],
-            [InlineKeyboardButton("🕒 Recent", callback_data="sr:1")],
+            InlineKeyboardButton("🏢 By company", callback_data="sc:1"),
+            InlineKeyboardButton("🔤 By filename", callback_data="sn"),
         ]
     )
+    rows.append([InlineKeyboardButton("« Menu", callback_data="mn")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _search_home_view(page: int) -> tuple[str, InlineKeyboardMarkup]:
+    """The Search entry point: recently added files, with company/filename search alongside."""
+
+    rows, total = await _fetch_recent(page)
+    if not rows:
+        return "No files yet. Use + Add link to add some.", _main_menu_keyboard()
+    return f"Recent files ({total}):", _search_home_keyboard(rows, page, total)
 
 
 def _companies_keyboard(companies: list[tuple], page: int) -> InlineKeyboardMarkup:
@@ -413,7 +434,7 @@ def _file_detail_text(row: File) -> str:
 async def _render_detail(query, file_id: int) -> None:
     row = await _fetch_file(file_id)
     if row is None:
-        await query.edit_message_text("That file is gone.", reply_markup=_root_menu_keyboard())
+        await query.edit_message_text("That file is gone.", reply_markup=_back_to_search_keyboard())
         return
     await query.edit_message_text(_file_detail_text(row), reply_markup=_detail_keyboard(file_id))
 
@@ -467,15 +488,10 @@ async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: s
     await message.reply_text("Reading that link from Drive...")
 
     def _run():
-        preview = preview_link(url, DriveClient())
-        session = SessionLocal()
-        try:
-            return preview, list_companies(session)
-        finally:
-            session.close()
+        return preview_link(url, DriveClient())
 
     try:
-        preview, companies = await asyncio.to_thread(_run)
+        preview = await asyncio.to_thread(_run)
     except DriveLinkError as exc:
         await message.reply_text(str(exc), reply_markup=_main_menu_keyboard())
         return
@@ -499,12 +515,7 @@ async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: s
     if len(preview.files) > MAX_PREVIEW_LINES:
         lines.append(f"...and {len(preview.files) - MAX_PREVIEW_LINES} more")
     lines.append("")
-    lines.append("Pick a company below (or type /confirm, /confirm <number>, /confirm new <name>).")
-
-    if companies:
-        lines.append("")
-        lines.append("Existing companies:")
-        lines += [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
+    lines.append("Pick a company below to file these under.")
 
     await _send_chunked(message, "\n".join(lines), reply_markup=_confirm_keyboard(preview))
 
@@ -519,47 +530,6 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await _preview_and_reply(update.message, context, context.args[0])
-
-
-@owner_only
-async def confirm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    preview: LinkPreview | None = context.user_data.get("pending_import")
-    if preview is None:
-        await update.message.reply_text("Nothing pending. Use /addlink <url> first.")
-        return
-
-    if not context.args:
-        if not preview.suggested_company:
-            await update.message.reply_text("No company specified. Use /confirm <number> or /confirm new <name>.")
-            return
-        payload, error = await _commit_preview_with_company_name(preview, preview.suggested_company)
-    elif context.args[0].lower() == "new":
-        name = " ".join(context.args[1:]).strip()
-        if not name:
-            await update.message.reply_text("Usage: /confirm new <company name>")
-            return
-        payload, error = await _commit_preview_with_company_name(preview, name)
-    elif context.args[0].isdigit():
-        companies = await _fetch_companies()
-        idx = int(context.args[0])
-        if not (1 <= idx <= len(companies)):
-            await update.message.reply_text(f"No company numbered {idx}. Check /companies.")
-            return
-        payload, error = await _commit_preview_with_company_id(preview, companies[idx - 1][0].id)
-    else:
-        await update.message.reply_text("Usage: /confirm | /confirm <number> | /confirm new <name>")
-        return
-
-    if error:
-        await update.message.reply_text(error)
-        return
-
-    company_name, added, updated = payload
-    context.user_data.pop("pending_import", None)
-    await update.message.reply_text(
-        f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.',
-        reply_markup=_main_menu_keyboard(),
-    )
 
 
 @owner_only
@@ -584,7 +554,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def companies_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     companies = await _fetch_companies()
     if not companies:
-        await update.message.reply_text("No companies yet. They're created via /addlink then /confirm.")
+        await update.message.reply_text("No companies yet. Add one via /addlink and pick a company.")
         return
 
     lines = [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
@@ -596,29 +566,6 @@ def _format_file_line(row: File) -> str:
     if row.company:
         line += f" — {row.company.name}"
     return line
-
-
-@owner_only
-async def list_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    page = 1
-    if context.args and context.args[0].isdigit():
-        page = int(context.args[0])
-
-    def _run():
-        session = SessionLocal()
-        try:
-            return list_files(session, page=page, page_size=20)
-        finally:
-            session.close()
-
-    rows, total = await asyncio.to_thread(_run)
-    if not rows:
-        await update.message.reply_text("No files yet. Add one with /addlink <url>.")
-        return
-
-    lines = [_format_file_line(row) for row in rows]
-    header = f"Page {page} - {total} file(s) total\n"
-    await _send_chunked(update.message, header + "\n".join(lines))
 
 
 @owner_only
@@ -666,7 +613,7 @@ async def get_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @owner_only
 async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("Usage: /delete <catalog id> (see /list or /find for ids)")
+        await update.message.reply_text("Usage: /delete <catalog id> (see /search or /find for ids)")
         return
 
     row = await _do_delete(int(context.args[0]))
@@ -691,7 +638,8 @@ async def replace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Search the dataroom:", reply_markup=_root_menu_keyboard())
+    text, keyboard = await _search_home_view(1)
+    await update.message.reply_text(text, reply_markup=keyboard)
 
 
 @owner_only
@@ -735,11 +683,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data == "mn:find":
-        context.user_data["awaiting_search_text"] = True
-        await query.edit_message_text(
-            "Send the text you want to search filenames for.", reply_markup=_back_keyboard()
-        )
+    if data == "mn:search":
+        text, keyboard = await _search_home_view(1)
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data == "ic:suggested":
@@ -812,8 +758,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Discarded.")
         return
 
-    if data == "sm":
-        await query.edit_message_text("Search the dataroom:", reply_markup=_root_menu_keyboard())
+    if data == "sm" or data.startswith("sr:"):
+        page = int(data.split(":")[1]) if data.startswith("sr:") else 1
+        text, keyboard = await _search_home_view(page)
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data == "sn":
@@ -826,7 +774,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         companies = await _fetch_companies()
         if not companies:
             await query.edit_message_text(
-                "No companies yet. Add one via /addlink then /confirm.", reply_markup=_root_menu_keyboard()
+                "No companies yet. Add one via /addlink and pick a company.", reply_markup=_back_to_search_keyboard()
             )
             return
         await query.edit_message_text("Companies:", reply_markup=_companies_keyboard(companies, page))
@@ -844,16 +792,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"Files ({total}):", reply_markup=keyboard)
         return
 
-    if data.startswith("sr:"):
-        page = int(data.split(":")[1])
-        rows, total = await _fetch_recent(page)
-        if not rows:
-            await query.edit_message_text("No files yet.", reply_markup=_root_menu_keyboard())
-            return
-        keyboard = _paged_files_keyboard(rows, page, total, page_prefix="sr:", back_callback="sm")
-        await query.edit_message_text(f"Recent ({total}):", reply_markup=keyboard)
-        return
-
     if data.startswith("sd:"):
         file_id = int(data.split(":")[1])
         await _render_detail(query, file_id)
@@ -868,7 +806,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = int(data.split(":")[1])
         row = await _fetch_file(file_id)
         if row is None:
-            await query.edit_message_text("That file is already gone.", reply_markup=_root_menu_keyboard())
+            await query.edit_message_text("That file is already gone.", reply_markup=_back_to_search_keyboard())
             return
         await query.edit_message_text(
             f'Delete "{row.name}" from the catalog? The Drive file itself will not be touched.',
@@ -880,9 +818,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = int(data.split(":")[1])
         row = await _do_delete(file_id)
         if row is None:
-            await query.edit_message_text("Already gone.", reply_markup=_root_menu_keyboard())
+            await query.edit_message_text("Already gone.", reply_markup=_back_to_search_keyboard())
         else:
-            await query.edit_message_text(f'Deleted "{row.name}" from the catalog.', reply_markup=_root_menu_keyboard())
+            await query.edit_message_text(f'Deleted "{row.name}" from the catalog.', reply_markup=_back_to_search_keyboard())
         return
 
     if data.startswith("sxn:"):
@@ -894,7 +832,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = int(data.split(":")[1])
         row = await _fetch_file(file_id)
         if row is None:
-            await query.edit_message_text("That file is gone.", reply_markup=_root_menu_keyboard())
+            await query.edit_message_text("That file is gone.", reply_markup=_back_to_search_keyboard())
             return
         context.user_data["pending_replace_file_id"] = file_id
         await query.edit_message_text(f'Send the new Google Drive link to replace "{row.name}" with.')
@@ -967,12 +905,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 BOT_COMMANDS = [
     BotCommand("start", "Show the welcome menu"),
     BotCommand("addlink", "Add a Google Drive link"),
-    BotCommand("confirm", "Confirm & save the file"),
     BotCommand("cancel", "Cancel current preview"),
     BotCommand("companies", "View companies"),
     BotCommand("search", "Browse or search your files"),
     BotCommand("menu", "Show the button menu"),
-    BotCommand("list", "List all files"),
     BotCommand("find", "Find a file"),
     BotCommand("get", "Get a file"),
     BotCommand("delete", "Remove from catalog (Drive untouched)"),
@@ -988,12 +924,10 @@ def build_application() -> Application:
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("addlink", addlink))
-    application.add_handler(CommandHandler("confirm", confirm_cmd))
     application.add_handler(CommandHandler("cancel", cancel_cmd))
     application.add_handler(CommandHandler("companies", companies_cmd))
     application.add_handler(CommandHandler("search", search_cmd))
     application.add_handler(CommandHandler("menu", menu_cmd))
-    application.add_handler(CommandHandler("list", list_cmd))
     application.add_handler(CommandHandler("find", find_cmd))
     application.add_handler(CommandHandler("get", get_cmd))
     application.add_handler(CommandHandler("delete", delete_cmd))
