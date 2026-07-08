@@ -505,7 +505,6 @@ async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: s
         lines += [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
 
     await _send_chunked(message, "\n".join(lines), reply_markup=_confirm_keyboard(preview))
-    await message.reply_text("Choose an option above to finish, or « Back to do something else.", reply_markup=_main_menu_keyboard())
 
 
 @owner_only
