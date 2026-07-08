@@ -334,7 +334,7 @@ def _file_button(row: File) -> InlineKeyboardButton:
 
 
 def _back_to_search_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("« Search", callback_data="sm")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("« Back", callback_data="sm")]])
 
 
 def _search_home_keyboard(files: list[File], page: int, total: int) -> InlineKeyboardMarkup:
@@ -353,7 +353,7 @@ def _search_home_keyboard(files: list[File], page: int, total: int) -> InlineKey
             InlineKeyboardButton("🔤 By filename", callback_data="sn"),
         ]
     )
-    rows.append([InlineKeyboardButton("« Menu", callback_data="mn")])
+    rows.append([InlineKeyboardButton("« Back", callback_data="mn")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -382,7 +382,7 @@ def _companies_keyboard(companies: list[tuple], page: int) -> InlineKeyboardMark
         nav.append(InlineKeyboardButton("Next »", callback_data=f"sc:{page + 1}"))
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton("« Menu", callback_data="sm")])
+    rows.append([InlineKeyboardButton("« Back", callback_data="sm")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -408,7 +408,7 @@ def _detail_keyboard(file_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("⬇️ Get", callback_data=f"sg:{file_id}")],
             [InlineKeyboardButton("🔁 Replace", callback_data=f"sp:{file_id}")],
             [InlineKeyboardButton("🗑 Delete", callback_data=f"sx:{file_id}")],
-            [InlineKeyboardButton("« Menu", callback_data="sm")],
+            [InlineKeyboardButton("« Back", callback_data="sm")],
         ]
     )
 
@@ -759,6 +759,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "sm" or data.startswith("sr:"):
+        context.user_data.pop("awaiting_search_text", None)
         page = int(data.split(":")[1]) if data.startswith("sr:") else 1
         text, keyboard = await _search_home_view(page)
         await query.edit_message_text(text, reply_markup=keyboard)
@@ -766,7 +767,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "sn":
         context.user_data["awaiting_search_text"] = True
-        await query.edit_message_text("Send the text you want to search filenames for.")
+        await query.edit_message_text(
+            "Send the text you want to search filenames for.", reply_markup=_back_to_search_keyboard()
+        )
         return
 
     if data.startswith("sc:"):
@@ -896,7 +899,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("No matches.", reply_markup=_main_menu_keyboard())
             return
         keyboard = InlineKeyboardMarkup(
-            [[_file_button(row)] for row in rows] + [[InlineKeyboardButton("« Search menu", callback_data="sm")]]
+            [[_file_button(row)] for row in rows] + [[InlineKeyboardButton("« Back", callback_data="sm")]]
         )
         await update.message.reply_text(f"Found {len(rows)} match(es):", reply_markup=keyboard)
         return
