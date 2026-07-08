@@ -6,10 +6,10 @@ import io
 import logging
 
 from telegram import (
+    BotCommand,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputFile,
-    ReplyKeyboardMarkup,
     Update,
 )
 from telegram.ext import (
@@ -290,19 +290,24 @@ async def _deliver_file(message, file_id: int) -> None:
         session.close()
 
 
-# --- bottom (persistent) reply keyboard ---
+# --- main menu (inline buttons attached to a chat message) ---
 
 
-def _main_reply_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [[GET_LABEL, ADD_LABEL, FIND_LABEL], [BACK_LABEL]],
-        resize_keyboard=True,
-        is_persistent=True,
+def _main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(GET_LABEL, callback_data="mn:get"),
+                InlineKeyboardButton(ADD_LABEL, callback_data="mn:add"),
+                InlineKeyboardButton(FIND_LABEL, callback_data="mn:find"),
+            ],
+            [InlineKeyboardButton(BACK_LABEL, callback_data="mn")],
+        ]
     )
 
 
-def _back_reply_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([[BACK_LABEL]], resize_keyboard=True, is_persistent=True)
+def _back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton(BACK_LABEL, callback_data="mn")]])
 
 
 # --- inline keyboards for the /search menu ---
@@ -450,7 +455,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "♻️ Replace a file — /replace\n"
         "🗑️ Remove from catalog — /delete (Drive file stays untouched)\n"
         "❌ Cancel current preview — /cancel",
-        reply_markup=_main_reply_keyboard(),
+        reply_markup=_main_menu_keyboard(),
     )
 
 
@@ -470,19 +475,19 @@ async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: s
     try:
         preview, companies = await asyncio.to_thread(_run)
     except DriveLinkError as exc:
-        await message.reply_text(str(exc), reply_markup=_main_reply_keyboard())
+        await message.reply_text(str(exc), reply_markup=_main_menu_keyboard())
         return
     except Exception:
         logger.exception("Failed to preview link %s", url)
         await message.reply_text(
             "Couldn't read that link. Make sure it's shared as "
             "\"Anyone with the link\" and try again.",
-            reply_markup=_main_reply_keyboard(),
+            reply_markup=_main_menu_keyboard(),
         )
         return
 
     if not preview.files:
-        await message.reply_text("That link resolved but no files were found in it.", reply_markup=_main_reply_keyboard())
+        await message.reply_text("That link resolved but no files were found in it.", reply_markup=_main_menu_keyboard())
         return
 
     context.user_data["pending_import"] = preview
@@ -500,7 +505,7 @@ async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: s
         lines += [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
 
     await _send_chunked(message, "\n".join(lines), reply_markup=_confirm_keyboard(preview))
-    await message.reply_text("Choose an option above to finish, or « Back to do something else.", reply_markup=_main_reply_keyboard())
+    await message.reply_text("Choose an option above to finish, or « Back to do something else.", reply_markup=_main_menu_keyboard())
 
 
 @owner_only
@@ -549,7 +554,7 @@ async def confirm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("pending_import", None)
     await update.message.reply_text(
         f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.',
-        reply_markup=_main_reply_keyboard(),
+        reply_markup=_main_menu_keyboard(),
     )
 
 
@@ -567,7 +572,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "Discarded." if had_pending else "Nothing pending.",
-        reply_markup=_main_reply_keyboard(),
+        reply_markup=_main_menu_keyboard(),
     )
 
 
@@ -681,7 +686,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Main menu:", reply_markup=_main_reply_keyboard())
+    await update.message.reply_text("Main menu:", reply_markup=_main_menu_keyboard())
 
 
 # --- inline menu callback + free-text follow-ups ---
@@ -692,6 +697,40 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+
+    if data == "mn":
+        for key in (
+            "pending_import",
+            "pending_replace_file_id",
+            "awaiting_addlink_url",
+            "awaiting_get_query",
+            "awaiting_search_text",
+            "awaiting_new_company_name",
+        ):
+            context.user_data.pop(key, None)
+        await query.edit_message_text("Main menu:", reply_markup=_main_menu_keyboard())
+        return
+
+    if data == "mn:get":
+        context.user_data["awaiting_get_query"] = True
+        await query.edit_message_text(
+            "Send the catalog id or filename of the file you want.", reply_markup=_back_keyboard()
+        )
+        return
+
+    if data == "mn:add":
+        context.user_data["awaiting_addlink_url"] = True
+        await query.edit_message_text(
+            "Send the Google Drive link (file or folder) you want to add.", reply_markup=_back_keyboard()
+        )
+        return
+
+    if data == "mn:find":
+        context.user_data["awaiting_search_text"] = True
+        await query.edit_message_text(
+            "Send the text you want to search filenames for.", reply_markup=_back_keyboard()
+        )
+        return
 
     if data == "ic:suggested":
         preview: LinkPreview | None = context.user_data.get("pending_import")
@@ -716,7 +755,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_new_company_name"] = True
         await query.edit_message_text("Send the company name to file these under.")
         await query.message.reply_text(
-            "(Type the name, or tap « Back below to cancel.)", reply_markup=_back_reply_keyboard()
+            "(Type the name, or tap « Back below to cancel.)", reply_markup=_back_keyboard()
         )
         return
 
@@ -856,39 +895,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
-    if text in (GET_LABEL, ADD_LABEL, FIND_LABEL, BACK_LABEL):
-        for key in (
-            "pending_import",
-            "pending_replace_file_id",
-            "awaiting_addlink_url",
-            "awaiting_get_query",
-            "awaiting_search_text",
-            "awaiting_new_company_name",
-        ):
-            context.user_data.pop(key, None)
-
-        if text == BACK_LABEL:
-            await update.message.reply_text("Main menu:", reply_markup=_main_reply_keyboard())
-            return
-        if text == GET_LABEL:
-            context.user_data["awaiting_get_query"] = True
-            await update.message.reply_text(
-                "Send the catalog id or filename of the file you want.", reply_markup=_back_reply_keyboard()
-            )
-            return
-        if text == ADD_LABEL:
-            context.user_data["awaiting_addlink_url"] = True
-            await update.message.reply_text(
-                "Send the Google Drive link (file or folder) you want to add.", reply_markup=_back_reply_keyboard()
-            )
-            return
-        if text == FIND_LABEL:
-            context.user_data["awaiting_search_text"] = True
-            await update.message.reply_text(
-                "Send the text you want to search filenames for.", reply_markup=_back_reply_keyboard()
-            )
-            return
-
     pending_replace_file_id = context.user_data.pop("pending_replace_file_id", None)
     if pending_replace_file_id is not None:
         row, error = await _do_replace(pending_replace_file_id, text)
@@ -896,7 +902,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(error)
             return
         await update.message.reply_text(
-            f'Replaced. "{row.name}" now points at the new Drive file.', reply_markup=_main_reply_keyboard()
+            f'Replaced. "{row.name}" now points at the new Drive file.', reply_markup=_main_menu_keyboard()
         )
         return
 
@@ -910,48 +916,67 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             logger.exception("Failed to look up %s", text)
             await update.message.reply_text(
-                "Something went wrong looking that up. Try again.", reply_markup=_main_reply_keyboard()
+                "Something went wrong looking that up. Try again.", reply_markup=_main_menu_keyboard()
             )
             return
         if row is None:
-            await update.message.reply_text(f"No file matching {text!r}.", reply_markup=_main_reply_keyboard())
+            await update.message.reply_text(f"No file matching {text!r}.", reply_markup=_main_menu_keyboard())
             return
         await _deliver_file(update.message, row.id)
-        await update.message.reply_text("Menu:", reply_markup=_main_reply_keyboard())
+        await update.message.reply_text("Menu:", reply_markup=_main_menu_keyboard())
         return
 
     if context.user_data.pop("awaiting_new_company_name", None):
         preview: LinkPreview | None = context.user_data.get("pending_import")
         if preview is None:
-            await update.message.reply_text("Nothing pending.", reply_markup=_main_reply_keyboard())
+            await update.message.reply_text("Nothing pending.", reply_markup=_main_menu_keyboard())
             return
         payload, error = await _commit_preview_with_company_name(preview, text)
         if error:
-            await update.message.reply_text(error, reply_markup=_main_reply_keyboard())
+            await update.message.reply_text(error, reply_markup=_main_menu_keyboard())
             return
         context.user_data.pop("pending_import", None)
         company_name, added, updated = payload
         await update.message.reply_text(
             f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.',
-            reply_markup=_main_reply_keyboard(),
+            reply_markup=_main_menu_keyboard(),
         )
         return
 
     if context.user_data.pop("awaiting_search_text", None):
         rows = await _fetch_search(text)
         if not rows:
-            await update.message.reply_text("No matches.", reply_markup=_main_reply_keyboard())
+            await update.message.reply_text("No matches.", reply_markup=_main_menu_keyboard())
             return
         keyboard = InlineKeyboardMarkup(
             [[_file_button(row)] for row in rows] + [[InlineKeyboardButton("« Search menu", callback_data="sm")]]
         )
         await update.message.reply_text(f"Found {len(rows)} match(es):", reply_markup=keyboard)
-        await update.message.reply_text("Menu:", reply_markup=_main_reply_keyboard())
+        await update.message.reply_text("Menu:", reply_markup=_main_menu_keyboard())
         return
 
 
+BOT_COMMANDS = [
+    BotCommand("addlink", "Add a Google Drive link"),
+    BotCommand("confirm", "Confirm & save the file"),
+    BotCommand("cancel", "Cancel current preview"),
+    BotCommand("companies", "View companies"),
+    BotCommand("search", "Browse or search your files"),
+    BotCommand("menu", "Show the button menu"),
+    BotCommand("list", "List all files"),
+    BotCommand("find", "Find a file"),
+    BotCommand("get", "Get a file"),
+    BotCommand("delete", "Remove from catalog (Drive untouched)"),
+    BotCommand("replace", "Replace a file"),
+]
+
+
+async def _post_init(application: Application) -> None:
+    await application.bot.set_my_commands(BOT_COMMANDS)
+
+
 def build_application() -> Application:
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("addlink", addlink))
     application.add_handler(CommandHandler("confirm", confirm_cmd))
