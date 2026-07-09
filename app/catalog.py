@@ -177,21 +177,17 @@ def search_files(session: Session, query: str, limit: int = 20) -> list[File]:
 
 
 def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, list[File]]:
-    """Resolve a /get-style query.
+    """Resolve a /get-style query by filename.
 
-    A numeric identifier is treated as a catalog id. Otherwise every file
-    whose name contains the text is a candidate: only an exact name match
-    resolves outright — any substring match, even a single one, comes back
-    as a list so the caller can show a confirmation instead of silently
-    grabbing a file the user didn't explicitly name. E.g. searching "KTP"
-    should surface every file with "KTP" in the name for the user to pick,
-    not guess at one of them.
+    Every file whose name contains the text is a candidate: only an exact
+    name match resolves outright — any substring match, even a single one,
+    comes back as a list so the caller can show a confirmation instead of
+    silently grabbing a file the user didn't explicitly name. E.g.
+    searching "KTP" should surface every file with "KTP" in the name for
+    the user to pick, not guess at one of them.
     """
 
     identifier = identifier.strip()
-    if identifier.isdigit():
-        return session.query(File).filter_by(id=int(identifier)).one_or_none(), []
-
     matches = search_files(session, identifier, limit=20)
     if not matches:
         return None, []

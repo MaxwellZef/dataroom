@@ -308,7 +308,7 @@ async def _deliver_file(message, file_id: int) -> None:
 
 
 async def _handle_get_query(message, identifier: str) -> None:
-    """Resolve a Get query (catalog id or name) and deliver it, or list every name match."""
+    """Resolve a Get query by filename and deliver it, or list every name match."""
 
     try:
         file_row, matches = await _resolve_get_query(identifier)
@@ -622,7 +622,7 @@ async def get_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         context.user_data["awaiting_get_query"] = True
         await update.message.reply_text(
-            "Send a catalog id, or text to search filenames for (e.g. \"KTP\").", reply_markup=_back_keyboard()
+            "Send text to search filenames for (e.g. \"KTP\").", reply_markup=_back_keyboard()
         )
         return
 
@@ -693,7 +693,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "mn:get":
         context.user_data["awaiting_get_query"] = True
         await query.edit_message_text(
-            "Send a catalog id, or text to search filenames for (e.g. \"KTP\").", reply_markup=_back_keyboard()
+            "Send text to search filenames for (e.g. \"KTP\").", reply_markup=_back_keyboard()
         )
         return
 
