@@ -176,21 +176,31 @@ def search_files(session: Session, query: str, limit: int = 20) -> list[File]:
     )
 
 
-def find_file(session: Session, identifier: str) -> File | None:
-    """Resolve a /get argument: a numeric catalog id, or a name match."""
+def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, list[File]]:
+    """Resolve a /get-style query.
+
+    A numeric identifier is treated as a catalog id. Otherwise every file
+    whose name contains the text is a candidate: an exact name match (or a
+    single substring match) resolves outright, but multiple substring
+    matches are returned as-is so the caller can let the user pick one —
+    e.g. searching "KTP" should surface every file with "KTP" in the name,
+    not silently guess at one of them.
+    """
 
     identifier = identifier.strip()
     if identifier.isdigit():
-        row = session.query(File).filter_by(id=int(identifier)).one_or_none()
-        if row:
-            return row
+        return session.query(File).filter_by(id=int(identifier)).one_or_none(), []
 
-    exact = session.query(File).filter(func.lower(File.name) == identifier.lower()).one_or_none()
+    matches = search_files(session, identifier, limit=20)
+    if not matches:
+        return None, []
+
+    exact = next((m for m in matches if m.name.lower() == identifier.lower()), None)
     if exact:
-        return exact
-
-    matches = search_files(session, identifier, limit=1)
-    return matches[0] if matches else None
+        return exact, []
+    if len(matches) == 1:
+        return matches[0], []
+    return None, matches
 
 
 def record_telegram_file_id(session: Session, file_row: File, telegram_file_id: str) -> None:

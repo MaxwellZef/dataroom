@@ -26,7 +26,6 @@ from app.catalog import (
     commit_import,
     delete_file,
     files_by_company,
-    find_file,
     get_file,
     get_or_create_company,
     list_companies,
@@ -34,6 +33,7 @@ from app.catalog import (
     preview_link,
     record_telegram_file_id,
     replace_file_source,
+    resolve_file_query,
     search_files,
 )
 from app.config import ALLOWED_TELEGRAM_USER_IDS, TELEGRAM_MAX_FILE_BYTES, TELEGRAM_BOT_TOKEN
@@ -172,11 +172,11 @@ async def _fetch_file(file_id: int) -> File | None:
     return await asyncio.to_thread(_run)
 
 
-async def _lookup_file(identifier: str) -> File | None:
+async def _resolve_get_query(identifier: str) -> tuple[File | None, list[File]]:
     def _run():
         session = SessionLocal()
         try:
-            return find_file(session, identifier)
+            return resolve_file_query(session, identifier)
         finally:
             session.close()
 
@@ -305,6 +305,32 @@ async def _deliver_file(message, file_id: int) -> None:
         await _show_main_menu(message)
     finally:
         session.close()
+
+
+async def _handle_get_query(message, identifier: str) -> None:
+    """Resolve a Get query (catalog id or name) and deliver it, or list every name match."""
+
+    try:
+        file_row, matches = await _resolve_get_query(identifier)
+    except Exception:
+        logger.exception("Failed to look up %s", identifier)
+        await message.reply_text(
+            "Something went wrong looking that up. Try again.", reply_markup=_main_menu_keyboard()
+        )
+        return
+
+    if file_row is not None:
+        await _deliver_file(message, file_row.id)
+        return
+
+    if matches:
+        keyboard = InlineKeyboardMarkup(
+            [[_file_button(m)] for m in matches] + [[InlineKeyboardButton(BACK_LABEL, callback_data="mn")]]
+        )
+        await message.reply_text(f"Found {len(matches)} file(s) matching {identifier!r}:", reply_markup=keyboard)
+        return
+
+    await message.reply_text(f"No file matching {identifier!r}.", reply_markup=_main_menu_keyboard())
 
 
 # --- main menu (inline buttons attached to a chat message) ---
@@ -595,23 +621,11 @@ async def get_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         context.user_data["awaiting_get_query"] = True
         await update.message.reply_text(
-            "Send the catalog id or filename of the file you want.", reply_markup=_back_keyboard()
+            "Send a catalog id, or text to search filenames for (e.g. \"KTP\").", reply_markup=_back_keyboard()
         )
         return
 
-    identifier = " ".join(context.args)
-    try:
-        row = await _lookup_file(identifier)
-    except Exception:
-        logger.exception("Failed to look up %s", identifier)
-        await update.message.reply_text("Something went wrong looking that up. Try again.")
-        return
-
-    if row is None:
-        await update.message.reply_text(f"No file matching {identifier!r}.")
-        return
-
-    await _deliver_file(update.message, row.id)
+    await _handle_get_query(update.message, " ".join(context.args))
 
 
 @owner_only
@@ -678,7 +692,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "mn:get":
         context.user_data["awaiting_get_query"] = True
         await query.edit_message_text(
-            "Send the catalog id or filename of the file you want.", reply_markup=_back_keyboard()
+            "Send a catalog id, or text to search filenames for (e.g. \"KTP\").", reply_markup=_back_keyboard()
         )
         return
 
@@ -871,18 +885,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if context.user_data.pop("awaiting_get_query", None):
-        try:
-            row = await _lookup_file(text)
-        except Exception:
-            logger.exception("Failed to look up %s", text)
-            await update.message.reply_text(
-                "Something went wrong looking that up. Try again.", reply_markup=_main_menu_keyboard()
-            )
-            return
-        if row is None:
-            await update.message.reply_text(f"No file matching {text!r}.", reply_markup=_main_menu_keyboard())
-            return
-        await _deliver_file(update.message, row.id)
+        await _handle_get_query(update.message, text)
         return
 
     if context.user_data.pop("awaiting_new_company_name", None):
