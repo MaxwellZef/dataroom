@@ -9,11 +9,10 @@ whenever you want, and pull any file back into a chat on demand.
 ## How it works
 
 - `/start` or `/menu` shows an in-chat button menu with three options —
-  **📥 Get**, **➕ Add link**, **🔎 Search** — plus a **« Back** that's
-  always there to bail out of whatever you're doing. Tapping a button
-  prompts you for whatever it needs (a Drive link, a catalog
-  id/filename, or search text) and walks the rest of the flow through
-  buttons where possible.
+  **📥 Get**, **➕ Add link**, **🔎 Search**. Tapping a button prompts
+  you for whatever it needs (a catalog id/name, a Drive link, or search
+  text) and walks the rest of the flow through buttons where possible,
+  with a **« Back** to bail out along the way.
 - The ☰ menu button next to the message box (Telegram's native command
   menu) lists every slash command with a one-line description — tap it
   any time for the full command reference without scrolling back to
@@ -32,10 +31,12 @@ whenever you want, and pull any file back into a chat on demand.
   or searching by filename. Tapping any file shows its details with
   **Get**, **Replace**, and **Delete** buttons right there. `/find
   <text>` is the direct command-line shortcut for a filename search.
-- `/get <id-or-name>` downloads the file from Drive right then and sends it
-  to you in the chat. The first time a file is sent, Telegram hands back a
-  `file_id`; the bot caches that so the next `/get` is instant instead of
-  re-downloading from Drive.
+- `/get <id-or-name>` fetches a file. A numeric id or the exact filename
+  resolves straight to that file and downloads it from Drive right then
+  (the first send caches Telegram's `file_id`, so the next `/get` of the
+  same file is instant). Anything else is treated as a name search —
+  e.g. `/get KTP` lists every file with "KTP" in the name as buttons
+  instead of guessing which one you meant.
 - `/delete <id>` removes an entry from the catalog. This only affects the
   index — the actual file in Google Drive is never touched or deleted.
 - `/replace <id> <new drive url>` points an existing catalog entry at a
@@ -133,7 +134,7 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 | `/cancel` | Discard the last preview |
 | `/companies` | List companies and how many files are under each |
 | `/search` | Recent files, paginated, with buttons to switch to company/filename search |
-| `/menu` | Show the button menu (Get / Add link / Search / Back) again |
+| `/menu` | Show the button menu (Add link / Search) again |
 | `/find <text>` | Search filenames directly from the command line |
 | `/get <id or name>` | Fetch a file into the chat |
 | `/delete <id>` | Remove a file from the catalog (Drive itself is untouched) |
