@@ -10,9 +10,9 @@ whenever you want, and pull any file back into a chat on demand.
 
 - `/start` or `/menu` shows an in-chat button menu with three options —
   **📥 Get**, **➕ Add link**, **🔎 Search**. Tapping a button prompts
-  you for whatever it needs (a catalog id/name, a Drive link, or search
-  text) and walks the rest of the flow through buttons where possible,
-  with a **« Back** to bail out along the way.
+  you for whatever it needs (a filename to search for, a Drive link, or
+  search text) and walks the rest of the flow through buttons where
+  possible, with a **« Back** to bail out along the way.
 - The ☰ menu button next to the message box (Telegram's native command
   menu) lists every slash command with a one-line description — tap it
   any time for the full command reference without scrolling back to
@@ -31,13 +31,13 @@ whenever you want, and pull any file back into a chat on demand.
   or searching by filename. Tapping any file shows its details with
   **Get**, **Replace**, and **Delete** buttons right there. `/find
   <text>` is the direct command-line shortcut for a filename search.
-- `/get <id-or-name>` fetches a file. A numeric id or the exact filename
-  resolves straight to that file and downloads it from Drive right then
-  (the first send caches Telegram's `file_id`, so the next `/get` of the
-  same file is instant). Anything else is treated as a name search —
-  e.g. `/get KTP` shows every file with "KTP" in the name as buttons to
-  tap, even if there's only one match, instead of downloading something
-  you didn't explicitly ask for.
+- `/get <name>` fetches a file by filename, not catalog id. The exact
+  filename resolves straight to that file and downloads it from Drive
+  right then (the first send caches Telegram's `file_id`, so the next
+  `/get` of the same file is instant). Anything else is treated as a
+  search — e.g. `/get KTP` shows every file with "KTP" in the name as
+  buttons to tap, even if there's only one match, instead of downloading
+  something you didn't explicitly ask for.
 - `/delete <id>` removes an entry from the catalog. This only affects the
   index — the actual file in Google Drive is never touched or deleted.
 - `/replace <id> <new drive url>` points an existing catalog entry at a
