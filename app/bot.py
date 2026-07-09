@@ -65,8 +65,7 @@ MAIN_MENU_TEXT = (
     "📥 Get a file — /get\n"
     "✏️ Rename a file — /rename (catalog only, Drive untouched)\n"
     "♻️ Replace a file — /replace\n"
-    "🗑️ Remove from catalog — /delete (Drive file stays untouched)\n"
-    "❌ Cancel current preview — /cancel"
+    "🗑️ Remove from catalog — /delete (Drive file stays untouched)"
 )
 
 
@@ -580,23 +579,6 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @owner_only
-async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    had_pending = context.user_data.pop("pending_import", None) is not None
-    for key in (
-        "awaiting_addlink_url",
-        "awaiting_get_query",
-        "awaiting_search_text",
-        "awaiting_new_company_name",
-        "pending_replace_file_id",
-        "pending_rename_file_id",
-    ):
-        context.user_data.pop(key, None)
-
-    await update.message.reply_text("Discarded." if had_pending else "Nothing pending.")
-    await _show_main_menu(update.message)
-
-
-@owner_only
 async def companies_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     companies = await _fetch_companies()
     if not companies:
@@ -981,7 +963,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 BOT_COMMANDS = [
     BotCommand("start", "Show the welcome menu"),
     BotCommand("addlink", "Add a Google Drive link"),
-    BotCommand("cancel", "Cancel current preview"),
     BotCommand("companies", "View companies"),
     BotCommand("search", "Browse or search your files"),
     BotCommand("menu", "Show the button menu"),
@@ -1001,7 +982,6 @@ def build_application() -> Application:
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("addlink", addlink))
-    application.add_handler(CommandHandler("cancel", cancel_cmd))
     application.add_handler(CommandHandler("companies", companies_cmd))
     application.add_handler(CommandHandler("search", search_cmd))
     application.add_handler(CommandHandler("menu", menu_cmd))
