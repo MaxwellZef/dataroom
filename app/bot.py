@@ -53,20 +53,24 @@ ADD_LABEL = "➕ Add link"
 SEARCH_LABEL = "🔎 Search"
 BACK_LABEL = "« Back"
 
-MAIN_MENU_TEXT = (
-    "👋 Welcome to Dataroom Bot!\n\n"
-    "Manage and organize your Google Drive files directly from Telegram.\n\n"
-    "🚀 Quick Start\n\n"
-    "1️⃣ Add a Google Drive link — /addlink\n"
-    "2️⃣ Browse or search your files — /search\n\n"
-    "📋 Other Commands\n\n"
-    "📁 View companies — /companies\n"
-    "🔎 Find a file — /find\n"
-    "📥 Get a file — /get\n"
-    "✏️ Rename a file — /rename (catalog only, Drive untouched)\n"
-    "♻️ Replace a file — /replace\n"
-    "🗑️ Remove from catalog — /delete (Drive file stays untouched)"
-)
+
+def _main_menu_text(user) -> str:
+    name = (user.first_name or user.username) if user else None
+    greeting = f"Hello, {name}! Welcome to Dataroom Bot." if name else "Welcome to Dataroom Bot!"
+    return (
+        f"👋 {greeting}\n\n"
+        "Manage and organize your Google Drive files directly from Telegram.\n\n"
+        "🚀 Quick Start\n\n"
+        "1️⃣ Add a Google Drive link — /addlink\n"
+        "2️⃣ Browse or search your files — /search\n\n"
+        "📋 Other Commands\n\n"
+        "📁 View companies — /companies\n"
+        "🔎 Find a file — /find\n"
+        "📥 Get a file — /get\n"
+        "✏️ Rename a file — /rename (catalog only, Drive untouched)\n"
+        "♻️ Replace a file — /replace\n"
+        "🗑️ Remove from catalog — /delete (Drive file stays untouched)"
+    )
 
 
 def _human_size(num_bytes: int | None) -> str:
@@ -256,8 +260,10 @@ async def _commit_preview_with_company_id(
     return await asyncio.to_thread(_run)
 
 
-async def _deliver_file(message, file_id: int) -> None:
+async def _deliver_file(update: Update, file_id: int) -> None:
     """Send a catalogued file into the chat, from Telegram's cache or straight from Drive."""
+
+    message = update.effective_message
 
     def _get_session_and_row():
         session = SessionLocal()
@@ -281,7 +287,7 @@ async def _deliver_file(message, file_id: int) -> None:
 
         if row.telegram_file_id:
             await message.reply_document(document=row.telegram_file_id, filename=row.name)
-            await _show_main_menu(message)
+            await _show_main_menu(update)
             return
 
         if row.size_bytes and row.size_bytes > TELEGRAM_MAX_FILE_BYTES:
@@ -314,13 +320,15 @@ async def _deliver_file(message, file_id: int) -> None:
         sent = await message.reply_document(document=InputFile(io.BytesIO(content), filename=filename))
         if sent.document:
             await asyncio.to_thread(record_telegram_file_id, session, row, sent.document.file_id)
-        await _show_main_menu(message)
+        await _show_main_menu(update)
     finally:
         session.close()
 
 
-async def _handle_get_query(message, identifier: str) -> None:
+async def _handle_get_query(update: Update, identifier: str) -> None:
     """Resolve a Get query by filename and deliver it, or list every name match."""
+
+    message = update.effective_message
 
     try:
         file_row, matches = await _resolve_get_query(identifier)
@@ -332,7 +340,7 @@ async def _handle_get_query(message, identifier: str) -> None:
         return
 
     if file_row is not None:
-        await _deliver_file(message, file_row.id)
+        await _deliver_file(update, file_row.id)
         return
 
     if matches:
@@ -365,10 +373,12 @@ def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton(BACK_LABEL, callback_data="mn")]])
 
 
-async def _show_main_menu(message) -> None:
+async def _show_main_menu(update: Update) -> None:
     """Pull up the /start screen — sent as a follow-up once an action has finished."""
 
-    await message.reply_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
+    await update.effective_message.reply_text(
+        _main_menu_text(update.effective_user), reply_markup=_main_menu_keyboard()
+    )
 
 
 # --- inline keyboards for the /search menu ---
@@ -525,7 +535,7 @@ def _pick_company_keyboard(companies: list[tuple], page: int) -> InlineKeyboardM
 
 @owner_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _show_main_menu(update.message)
+    await _show_main_menu(update)
 
 
 async def _preview_and_reply(message, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
@@ -623,7 +633,7 @@ async def get_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await _handle_get_query(update.message, " ".join(context.args))
+    await _handle_get_query(update, " ".join(context.args))
 
 
 @owner_only
@@ -637,7 +647,7 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"No file with id {context.args[0]}.")
         return
     await update.message.reply_text(f'Deleted "{row.name}" from the catalog (the Drive file is untouched).')
-    await _show_main_menu(update.message)
+    await _show_main_menu(update)
 
 
 @owner_only
@@ -651,7 +661,7 @@ async def replace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(error)
         return
     await update.message.reply_text(f'Replaced. "{row.name}" now points at the new Drive file.')
-    await _show_main_menu(update.message)
+    await _show_main_menu(update)
 
 
 @owner_only
@@ -665,7 +675,7 @@ async def rename_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"No file with id {context.args[0]}.")
         return
     await update.message.reply_text(f'Renamed to "{row.name}".')
-    await _show_main_menu(update.message)
+    await _show_main_menu(update)
 
 
 @owner_only
@@ -676,7 +686,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _show_main_menu(update.message)
+    await _show_main_menu(update)
 
 
 # --- inline menu callback + free-text follow-ups ---
@@ -699,7 +709,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "awaiting_new_company_name",
         ):
             context.user_data.pop(key, None)
-        await query.edit_message_text(MAIN_MENU_TEXT, reply_markup=_main_menu_keyboard())
+        await query.edit_message_text(
+            _main_menu_text(update.effective_user), reply_markup=_main_menu_keyboard()
+        )
         return
 
     if data == "mn:get":
@@ -735,7 +747,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.'
         )
-        await _show_main_menu(query.message)
+        await _show_main_menu(update)
         return
 
     if data == "ic:new":
@@ -784,14 +796,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.'
         )
-        await _show_main_menu(query.message)
+        await _show_main_menu(update)
         return
 
     if data == "ic:cancel":
         context.user_data.pop("pending_import", None)
         context.user_data.pop("awaiting_new_company_name", None)
         await query.edit_message_text("Discarded.")
-        await _show_main_menu(query.message)
+        await _show_main_menu(update)
         return
 
     if data == "sm" or data.startswith("sr:"):
@@ -838,7 +850,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("sg:"):
         file_id = int(data.split(":")[1])
-        await _deliver_file(query.message, file_id)
+        await _deliver_file(update, file_id)
         return
 
     if data.startswith("sx:"):
@@ -860,7 +872,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Already gone.")
         else:
             await query.edit_message_text(f'Deleted "{row.name}" from the catalog.')
-        await _show_main_menu(query.message)
+        await _show_main_menu(update)
         return
 
     if data.startswith("sxn:"):
@@ -906,7 +918,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(error)
             return
         await update.message.reply_text(f'Replaced. "{row.name}" now points at the new Drive file.')
-        await _show_main_menu(update.message)
+        await _show_main_menu(update)
         return
 
     pending_rename_file_id = context.user_data.pop("pending_rename_file_id", None)
@@ -917,10 +929,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = await _do_rename(pending_rename_file_id, text)
         if row is None:
             await update.message.reply_text("That file is gone.")
-            await _show_main_menu(update.message)
+            await _show_main_menu(update)
             return
         await update.message.reply_text(f'Renamed to "{row.name}".')
-        await _show_main_menu(update.message)
+        await _show_main_menu(update)
         return
 
     if context.user_data.pop("awaiting_addlink_url", None):
@@ -928,7 +940,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if context.user_data.pop("awaiting_get_query", None):
-        await _handle_get_query(update.message, text)
+        await _handle_get_query(update, text)
         return
 
     if context.user_data.pop("awaiting_new_company_name", None):
@@ -945,7 +957,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f'Filed under "{company_name}": added {added} file(s), refreshed {updated} already catalogued.'
         )
-        await _show_main_menu(update.message)
+        await _show_main_menu(update)
         return
 
     if context.user_data.pop("awaiting_search_text", None):
