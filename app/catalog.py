@@ -215,6 +215,21 @@ def delete_file(session: Session, file_id: int) -> File | None:
     return row
 
 
+def rename_file(session: Session, file_id: int, new_name: str) -> File | None:
+    """Rename a catalog entry's display name. The underlying Drive file is never
+    renamed, and the custom name only lasts until this file is next synced —
+    commit_import() always resets File.name to whatever Drive reports, so
+    re-running /addlink on the same file/folder restores the original name.
+    """
+
+    row = session.query(File).filter_by(id=file_id).one_or_none()
+    if row is None:
+        return None
+    row.name = new_name.strip()
+    session.commit()
+    return row
+
+
 def replace_file_source(
     session: Session, file_id: int, new_drive_file: DriveFile
 ) -> tuple[File | None, str | None]:

@@ -32,6 +32,7 @@ from app.catalog import (
     list_files,
     preview_link,
     record_telegram_file_id,
+    rename_file,
     replace_file_source,
     resolve_file_query,
     search_files,
@@ -62,6 +63,7 @@ MAIN_MENU_TEXT = (
     "📁 View companies — /companies\n"
     "🔎 Find a file — /find\n"
     "📥 Get a file — /get\n"
+    "✏️ Rename a file — /rename (catalog only, Drive untouched)\n"
     "♻️ Replace a file — /replace\n"
     "🗑️ Remove from catalog — /delete (Drive file stays untouched)\n"
     "❌ Cancel current preview — /cancel"
@@ -188,6 +190,17 @@ async def _do_delete(file_id: int) -> File | None:
         session = SessionLocal()
         try:
             return delete_file(session, file_id)
+        finally:
+            session.close()
+
+    return await asyncio.to_thread(_run)
+
+
+async def _do_rename(file_id: int, new_name: str) -> File | None:
+    def _run():
+        session = SessionLocal()
+        try:
+            return rename_file(session, file_id, new_name)
         finally:
             session.close()
 
@@ -439,6 +452,7 @@ def _detail_keyboard(file_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("⬇️ Get", callback_data=f"sg:{file_id}")],
+            [InlineKeyboardButton("✏️ Rename", callback_data=f"sre:{file_id}")],
             [InlineKeyboardButton("🔁 Replace", callback_data=f"sp:{file_id}")],
             [InlineKeyboardButton("🗑 Delete", callback_data=f"sx:{file_id}")],
             [InlineKeyboardButton("« Back", callback_data="sm")],
@@ -574,6 +588,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "awaiting_search_text",
         "awaiting_new_company_name",
         "pending_replace_file_id",
+        "pending_rename_file_id",
     ):
         context.user_data.pop(key, None)
 
@@ -658,6 +673,20 @@ async def replace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @owner_only
+async def rename_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2 or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: /rename <catalog id> <new name>")
+        return
+
+    row = await _do_rename(int(context.args[0]), " ".join(context.args[1:]))
+    if row is None:
+        await update.message.reply_text(f"No file with id {context.args[0]}.")
+        return
+    await update.message.reply_text(f'Renamed to "{row.name}".')
+    await _show_main_menu(update.message)
+
+
+@owner_only
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text, keyboard = await _search_home_view(1)
     await update.message.reply_text(text, reply_markup=keyboard)
@@ -681,6 +710,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for key in (
             "pending_import",
             "pending_replace_file_id",
+            "pending_rename_file_id",
             "awaiting_addlink_url",
             "awaiting_get_query",
             "awaiting_search_text",
@@ -863,7 +893,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("That file is gone.", reply_markup=_back_to_search_keyboard())
             return
         context.user_data["pending_replace_file_id"] = file_id
-        await query.edit_message_text(f'Send the new Google Drive link to replace "{row.name}" with.')
+        await query.edit_message_text(
+            f'Send the new Google Drive link to replace "{row.name}" with.', reply_markup=_back_keyboard()
+        )
+        return
+
+    if data.startswith("sre:"):
+        file_id = int(data.split(":")[1])
+        row = await _fetch_file(file_id)
+        if row is None:
+            await query.edit_message_text("That file is gone.", reply_markup=_back_to_search_keyboard())
+            return
+        context.user_data["pending_rename_file_id"] = file_id
+        await query.edit_message_text(
+            f'Send the new name for "{row.name}". This only renames it in the catalog — the Drive file is '
+            "untouched, and re-adding this file via /addlink will restore the original Drive name.",
+            reply_markup=_back_keyboard(),
+        )
         return
 
 
@@ -878,6 +924,20 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(error)
             return
         await update.message.reply_text(f'Replaced. "{row.name}" now points at the new Drive file.')
+        await _show_main_menu(update.message)
+        return
+
+    pending_rename_file_id = context.user_data.pop("pending_rename_file_id", None)
+    if pending_rename_file_id is not None:
+        if not text:
+            await update.message.reply_text("Name can't be empty.", reply_markup=_main_menu_keyboard())
+            return
+        row = await _do_rename(pending_rename_file_id, text)
+        if row is None:
+            await update.message.reply_text("That file is gone.")
+            await _show_main_menu(update.message)
+            return
+        await update.message.reply_text(f'Renamed to "{row.name}".')
         await _show_main_menu(update.message)
         return
 
@@ -929,6 +989,7 @@ BOT_COMMANDS = [
     BotCommand("get", "Get a file"),
     BotCommand("delete", "Remove from catalog (Drive untouched)"),
     BotCommand("replace", "Replace a file"),
+    BotCommand("rename", "Rename a file (catalog only, Drive untouched)"),
 ]
 
 
@@ -948,6 +1009,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("get", get_cmd))
     application.add_handler(CommandHandler("delete", delete_cmd))
     application.add_handler(CommandHandler("replace", replace_cmd))
+    application.add_handler(CommandHandler("rename", rename_cmd))
     application.add_handler(CallbackQueryHandler(on_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     return application
