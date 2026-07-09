@@ -35,8 +35,9 @@ whenever you want, and pull any file back into a chat on demand.
   resolves straight to that file and downloads it from Drive right then
   (the first send caches Telegram's `file_id`, so the next `/get` of the
   same file is instant). Anything else is treated as a name search —
-  e.g. `/get KTP` lists every file with "KTP" in the name as buttons
-  instead of guessing which one you meant.
+  e.g. `/get KTP` shows every file with "KTP" in the name as buttons to
+  tap, even if there's only one match, instead of downloading something
+  you didn't explicitly ask for.
 - `/delete <id>` removes an entry from the catalog. This only affects the
   index — the actual file in Google Drive is never touched or deleted.
 - `/replace <id> <new drive url>` points an existing catalog entry at a
