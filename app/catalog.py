@@ -180,11 +180,12 @@ def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, 
     """Resolve a /get-style query.
 
     A numeric identifier is treated as a catalog id. Otherwise every file
-    whose name contains the text is a candidate: an exact name match (or a
-    single substring match) resolves outright, but multiple substring
-    matches are returned as-is so the caller can let the user pick one —
-    e.g. searching "KTP" should surface every file with "KTP" in the name,
-    not silently guess at one of them.
+    whose name contains the text is a candidate: only an exact name match
+    resolves outright — any substring match, even a single one, comes back
+    as a list so the caller can show a confirmation instead of silently
+    grabbing a file the user didn't explicitly name. E.g. searching "KTP"
+    should surface every file with "KTP" in the name for the user to pick,
+    not guess at one of them.
     """
 
     identifier = identifier.strip()
@@ -198,8 +199,6 @@ def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, 
     exact = next((m for m in matches if m.name.lower() == identifier.lower()), None)
     if exact:
         return exact, []
-    if len(matches) == 1:
-        return matches[0], []
     return None, matches
 
 

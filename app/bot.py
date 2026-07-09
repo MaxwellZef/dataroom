@@ -327,7 +327,8 @@ async def _handle_get_query(message, identifier: str) -> None:
         keyboard = InlineKeyboardMarkup(
             [[_file_button(m)] for m in matches] + [[InlineKeyboardButton(BACK_LABEL, callback_data="mn")]]
         )
-        await message.reply_text(f"Found {len(matches)} file(s) matching {identifier!r}:", reply_markup=keyboard)
+        noun = "file" if len(matches) == 1 else "files"
+        await message.reply_text(f"Found {len(matches)} {noun} matching {identifier!r}:", reply_markup=keyboard)
         return
 
     await message.reply_text(f"No file matching {identifier!r}.", reply_markup=_main_menu_keyboard())
