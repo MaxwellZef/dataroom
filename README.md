@@ -23,7 +23,7 @@ whenever you want, and pull any file back into a chat on demand.
   Company assignment is then done entirely with buttons: "Use the
   suggested name" (folders only, taken from the folder's own name),
   "Existing company" (pick from a list), or "New company name" (type
-  one). `/cancel` discards the preview instead.
+  one), with **« Back** to discard the preview instead.
 - `/companies` lists every company you've filed things under and how
   many files each has.
 - **🔎 Search** (or `/search`) lands straight on your most recently
@@ -137,11 +137,10 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 
 | Command | What it does |
 |---|---|
-| `/addlink <drive url>` | Preview a Drive file or folder link — lists what's in it, nothing is saved yet. Company assignment happens via buttons on the preview. |
-| `/cancel` | Discard the last preview |
+| `/addlink <drive url>` | Preview a Drive file or folder link — lists what's in it, nothing is saved yet. Company assignment happens via buttons on the preview; « Back discards it. |
 | `/companies` | List companies and how many files are under each |
 | `/search` | Recent files, paginated, with buttons to switch to company/filename search |
-| `/menu` | Show the button menu (Add link / Search) again |
+| `/menu` | Show the button menu (Get / Add link / Search) again |
 | `/find <text>` | Search filenames directly from the command line |
 | `/get <id or name>` | Fetch a file into the chat |
 | `/delete <id>` | Remove a file from the catalog (Drive itself is untouched) |
