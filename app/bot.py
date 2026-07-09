@@ -331,7 +331,7 @@ async def _handle_get_query(message, identifier: str) -> None:
         await message.reply_text(f"Found {len(matches)} {noun} matching {identifier!r}:", reply_markup=keyboard)
         return
 
-    await message.reply_text(f"No file matching {identifier!r}.", reply_markup=_main_menu_keyboard())
+    await message.reply_text(f"No file matching {identifier!r}.", reply_markup=_back_keyboard())
 
 
 # --- main menu (inline buttons attached to a chat message) ---
@@ -610,7 +610,7 @@ async def find_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     rows = await _fetch_search(" ".join(context.args))
     if not rows:
-        await update.message.reply_text("No matches.")
+        await update.message.reply_text("No matches.", reply_markup=_back_keyboard())
         return
 
     lines = [_format_file_line(row) for row in rows]
@@ -909,7 +909,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.pop("awaiting_search_text", None):
         rows = await _fetch_search(text)
         if not rows:
-            await update.message.reply_text("No matches.", reply_markup=_main_menu_keyboard())
+            await update.message.reply_text("No matches.", reply_markup=_back_to_search_keyboard())
             return
         keyboard = InlineKeyboardMarkup(
             [[_file_button(row)] for row in rows] + [[InlineKeyboardButton("« Back", callback_data="sm")]]
