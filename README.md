@@ -25,7 +25,9 @@ whenever you want, and pull any file back into a chat on demand.
   "Existing company" (pick from a list), or "New company name" (type
   one), with **« Back** to discard the preview instead.
 - `/companies` lists every company you've filed things under and how
-  many files each has.
+  many files each has, with a **Delete** button per company. Deleting
+  a company never deletes its files — they stay in the catalog and
+  just become unfiled (no company assigned).
 - **🔎 Search** (or `/search`) lands straight on your most recently
   added files, paginated, with buttons to switch to browsing by company
   or searching by filename. Tapping any file shows its details with
@@ -37,7 +39,10 @@ whenever you want, and pull any file back into a chat on demand.
   `/get` of the same file is instant). Anything else is treated as a
   search — e.g. `/get KTP` shows every file with "KTP" in the name as
   buttons to tap, even if there's only one match, instead of downloading
-  something you didn't explicitly ask for.
+  something you didn't explicitly ask for. If nothing contains your text
+  at all (e.g. a typo — "KTP joni" instead of "KTP John"), it falls back
+  to a "Did you mean" list of the closest-sounding filenames instead of
+  just saying nothing was found.
 - `/rename <id> <new name>` changes how a file is *displayed* in the
   catalog. It never touches the actual file in Drive, and it isn't
   permanent in the way you might expect: the next time that same file
@@ -138,7 +143,7 @@ DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dataroom
 | Command | What it does |
 |---|---|
 | `/addlink <drive url>` | Preview a Drive file or folder link — lists what's in it, nothing is saved yet. Company assignment happens via buttons on the preview; « Back discards it. |
-| `/companies` | List companies and how many files are under each |
+| `/companies` | List companies (with how many files each has) and delete one via button |
 | `/search` | Recent files, paginated, with buttons to switch to company/filename search |
 | `/menu` | Show the button menu (Get / Add link / Search) again |
 | `/find <text>` | Search filenames directly from the command line |
