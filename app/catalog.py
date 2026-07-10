@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from dataclasses import dataclass
 
 from sqlalchemy import func
@@ -128,6 +129,23 @@ def list_companies(session: Session) -> list[tuple[Company, int]]:
     )
 
 
+def delete_company(session: Session, company_id: int) -> tuple[str, int] | None:
+    """Delete a company. Its files are never deleted — they just become unfiled."""
+
+    company = session.query(Company).filter_by(id=company_id).one_or_none()
+    if company is None:
+        return None
+
+    name = company.name
+    files = session.query(File).filter_by(company_id=company_id).all()
+    for file_row in files:
+        file_row.company_id = None
+    affected = len(files)
+    session.delete(company)
+    session.commit()
+    return name, affected
+
+
 def list_files(session: Session, page: int = 1, page_size: int = 20) -> tuple[list[File], int]:
     total = session.query(func.count(File.id)).scalar() or 0
     rows = (
@@ -176,7 +194,7 @@ def search_files(session: Session, query: str, limit: int = 20) -> list[File]:
     )
 
 
-def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, list[File]]:
+def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, list[File], bool]:
     """Resolve a /get-style query by filename.
 
     Every file whose name contains the text is a candidate: only an exact
@@ -185,17 +203,38 @@ def resolve_file_query(session: Session, identifier: str) -> tuple[File | None, 
     silently grabbing a file the user didn't explicitly name. E.g.
     searching "KTP" should surface every file with "KTP" in the name for
     the user to pick, not guess at one of them.
+
+    If there's no substring match at all (e.g. a typo — "KTP joni" instead
+    of "KTP John"), falls back to typo-tolerant fuzzy matching against every
+    filename so a small mistake doesn't come back as a flat "no results".
+
+    Returns (exact_match, candidates, candidates_are_fuzzy_guesses).
     """
 
     identifier = identifier.strip()
     matches = search_files(session, identifier, limit=20)
-    if not matches:
-        return None, []
+    if matches:
+        exact = next((m for m in matches if m.name.lower() == identifier.lower()), None)
+        if exact:
+            return exact, [], False
+        return None, matches, False
 
-    exact = next((m for m in matches if m.name.lower() == identifier.lower()), None)
-    if exact:
-        return exact, []
-    return None, matches
+    return None, _fuzzy_match_files(session, identifier), True
+
+
+def _fuzzy_match_files(session: Session, query: str, limit: int = 5) -> list[File]:
+    """Typo-tolerant fallback: rank every filename by similarity to the query."""
+
+    all_files = session.query(File).options(joinedload(File.company)).all()
+    if not all_files:
+        return []
+
+    by_lower_name: dict[str, File] = {}
+    for file_row in all_files:
+        by_lower_name.setdefault(file_row.name.lower(), file_row)
+
+    close_names = difflib.get_close_matches(query.lower(), by_lower_name.keys(), n=limit, cutoff=0.6)
+    return [by_lower_name[name] for name in close_names]
 
 
 def record_telegram_file_id(session: Session, file_row: File, telegram_file_id: str) -> None:

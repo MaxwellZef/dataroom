@@ -24,6 +24,7 @@ from telegram.ext import (
 from app.catalog import (
     LinkPreview,
     commit_import,
+    delete_company,
     delete_file,
     files_by_company,
     get_file,
@@ -177,7 +178,7 @@ async def _fetch_file(file_id: int) -> File | None:
     return await asyncio.to_thread(_run)
 
 
-async def _resolve_get_query(identifier: str) -> tuple[File | None, list[File]]:
+async def _resolve_get_query(identifier: str) -> tuple[File | None, list[File], bool]:
     def _run():
         session = SessionLocal()
         try:
@@ -193,6 +194,17 @@ async def _do_delete(file_id: int) -> File | None:
         session = SessionLocal()
         try:
             return delete_file(session, file_id)
+        finally:
+            session.close()
+
+    return await asyncio.to_thread(_run)
+
+
+async def _do_delete_company(company_id: int) -> tuple[str, int] | None:
+    def _run():
+        session = SessionLocal()
+        try:
+            return delete_company(session, company_id)
         finally:
             session.close()
 
@@ -331,7 +343,7 @@ async def _handle_get_query(update: Update, identifier: str) -> None:
     message = update.effective_message
 
     try:
-        file_row, matches = await _resolve_get_query(identifier)
+        file_row, matches, is_fuzzy = await _resolve_get_query(identifier)
     except Exception:
         logger.exception("Failed to look up %s", identifier)
         await message.reply_text(
@@ -347,8 +359,12 @@ async def _handle_get_query(update: Update, identifier: str) -> None:
         keyboard = InlineKeyboardMarkup(
             [[_file_button(m)] for m in matches] + [[InlineKeyboardButton(BACK_LABEL, callback_data="mn")]]
         )
-        noun = "file" if len(matches) == 1 else "files"
-        await message.reply_text(f"Found {len(matches)} {noun} matching {identifier!r}:", reply_markup=keyboard)
+        if is_fuzzy:
+            header = f"No exact match for {identifier!r}. Did you mean:"
+        else:
+            noun = "file" if len(matches) == 1 else "files"
+            header = f"Found {len(matches)} {noun} matching {identifier!r}:"
+        await message.reply_text(header, reply_markup=keyboard)
         return
 
     await message.reply_text(f"No file matching {identifier!r}.", reply_markup=_back_keyboard())
@@ -439,6 +455,37 @@ def _companies_keyboard(companies: list[tuple], page: int) -> InlineKeyboardMark
         rows.append(nav)
     rows.append([InlineKeyboardButton("« Back", callback_data="sm")])
     return InlineKeyboardMarkup(rows)
+
+
+def _companies_manage_keyboard(companies: list[tuple]) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(f"🗑 Delete \"{company.name}\"", callback_data=f"cd:{company.id}")]
+        for company, _ in companies
+    ]
+    rows.append([InlineKeyboardButton(BACK_LABEL, callback_data="mn")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _company_delete_confirm_keyboard(company_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Yes, delete", callback_data=f"cdy:{company_id}"),
+                InlineKeyboardButton("✖️ Cancel", callback_data="cdn"),
+            ]
+        ]
+    )
+
+
+async def _companies_list_view() -> tuple[str, InlineKeyboardMarkup | None]:
+    companies = await _fetch_companies()
+    if not companies:
+        return "No companies yet. Add one via /addlink and pick a company.", None
+
+    lines = [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
+    lines.append("")
+    lines.append('Tap "Delete" below to remove a company — its files stay in the catalog, just unfiled.')
+    return "\n".join(lines), _companies_manage_keyboard(companies)
 
 
 def _paged_files_keyboard(
@@ -590,13 +637,8 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @owner_only
 async def companies_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    companies = await _fetch_companies()
-    if not companies:
-        await update.message.reply_text("No companies yet. Add one via /addlink and pick a company.")
-        return
-
-    lines = [f"{i}. {company.name} ({count} files)" for i, (company, count) in enumerate(companies, start=1)]
-    await _send_chunked(update.message, "\n".join(lines))
+    text, keyboard = await _companies_list_view()
+    await _send_chunked(update.message, text, reply_markup=keyboard)
 
 
 def _format_file_line(row: File) -> str:
@@ -829,6 +871,37 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         await query.edit_message_text("Companies:", reply_markup=_companies_keyboard(companies, page))
+        return
+
+    if data.startswith("cd:"):
+        company_id = int(data.split(":")[1])
+        companies = await _fetch_companies()
+        match = next(((c, count) for c, count in companies if c.id == company_id), None)
+        if match is None:
+            await query.edit_message_text("That company is already gone.")
+            return
+        company, count = match
+        await query.edit_message_text(
+            f'Delete company "{company.name}"? Its {count} file(s) will stay in the catalog but become '
+            "unfiled (no company assigned). This can't be undone.",
+            reply_markup=_company_delete_confirm_keyboard(company_id),
+        )
+        return
+
+    if data.startswith("cdy:"):
+        company_id = int(data.split(":")[1])
+        result = await _do_delete_company(company_id)
+        if result is None:
+            await query.edit_message_text("Already gone.")
+        else:
+            name, affected = result
+            await query.edit_message_text(f'Deleted company "{name}". {affected} file(s) are now unfiled.')
+        await _show_main_menu(update)
+        return
+
+    if data == "cdn":
+        text, keyboard = await _companies_list_view()
+        await query.edit_message_text(text, reply_markup=keyboard)
         return
 
     if data.startswith("sf:"):
